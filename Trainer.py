@@ -43,7 +43,6 @@ class Model:
 
         if name is None:
             name = self.name
-        name = name.replace(name, name + '_0521')
         print(f"load model from ckpt/{name}.pkl, state dict keys: {list(convert(torch.load(f'ckpt/{name}.pkl')).keys())}")
         print(f"self model state dict keys: {list(self.net.state_dict().keys())}")
         if self.local_rank == -1:
