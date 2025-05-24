@@ -19,6 +19,7 @@ class Model:
         # train
         self.optimG = AdamW(self.net.parameters(), lr=2e-4, weight_decay=1e-4)
         self.lap = LapLoss()
+        self.local_rank = local_rank
         if local_rank != -1:
             self.net = DDP(self.net, device_ids=[local_rank], output_device=local_rank)
 
@@ -33,15 +34,25 @@ class Model:
 
     def load_model(self, name=None, rank=0):
         def convert(param):
+            print("Convert...")
             return {
             k.replace("module.", ""): v
                 for k, v in param.items()
                 if "module." in k and 'attn_mask' not in k and 'HW' not in k
             }
-        if rank <= 0 :
-            if name is None:
-                name = self.name
+
+        if name is None:
+            name = self.name
+        name = name.replace(name, name + '_0521')
+        print(f"load model from ckpt/{name}.pkl, state dict keys: {list(convert(torch.load(f'ckpt/{name}.pkl')).keys())}")
+        print(f"self model state dict keys: {list(self.net.state_dict().keys())}")
+        if self.local_rank == -1:
+            print(f"Convert Used")
             self.net.load_state_dict(convert(torch.load(f'ckpt/{name}.pkl')))
+        else:
+            print(f"Convert Not Used")
+            self.net.load_state_dict(torch.load(f'ckpt/{name}.pkl'))
+        # self.net.load_state_dict((torch.load(f'ckpt/{name}.pkl')), strict=False)
     
     def save_model(self, rank=0):
         if rank == 0:

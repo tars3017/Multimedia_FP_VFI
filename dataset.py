@@ -13,26 +13,37 @@ class VimeoDataset(Dataset):
         self.batch_size = batch_size
         self.dataset_name = dataset_name
         self.model = model
-        self.h = 256
-        self.w = 448
+        self.h = 128
+        self.w = 224
         self.data_root = path
-        self.image_root = os.path.join(self.data_root, 'sequences')
+        self.image_root = os.path.join(self.data_root, '')
         train_fn = os.path.join(self.data_root, 'tri_trainlist.txt')
         test_fn = os.path.join(self.data_root, 'tri_testlist.txt')
         with open(train_fn, 'r') as f:
             self.trainlist = f.read().splitlines()
-        with open(test_fn, 'r') as f:
-            self.testlist = f.read().splitlines()                                                    
+        # with open(test_fn, 'r') as f:
+        #     self.testlist = f.read().splitlines()                                                    
         self.load_data()
 
     def __len__(self):
         return len(self.meta_data)
 
     def load_data(self):
-        if self.dataset_name != 'test':
-            self.meta_data = self.trainlist
-        else:
-            self.meta_data = self.testlist
+        # if self.dataset_name != 'test':
+        self.meta_data = self.trainlist
+        # else:
+        #     self.meta_data = self.testlist
+        
+        # Process the data format after loading
+        processed_data = []
+        for line in self.meta_data:
+            if ',' in line:  # Format: path,img1,img2,img3
+                parts = line.split(',')
+                processed_data.append(parts)
+            else:  # Default format: just a path
+                processed_data.append([line, '1', '2', '3'])  # Default to im1.png, im2.png, im3.png
+        
+        self.meta_data = processed_data
 
     def aug(self, img0, gt, img1, h, w):
         ih, iw, _ = img0.shape
@@ -44,9 +55,10 @@ class VimeoDataset(Dataset):
         return img0, gt, img1
 
     def getimg(self, index):
-        imgpath = os.path.join(self.image_root, self.meta_data[index])
-        imgpaths = [imgpath + '/im1.png', imgpath + '/im2.png', imgpath + '/im3.png']
-        
+        imgpath = os.path.join(self.image_root, self.meta_data[index][0])
+        imgpaths = [imgpath + f'/im{self.meta_data[index][1]}.png', 
+                   imgpath + f'/im{self.meta_data[index][2]}.png', 
+                   imgpath + f'/im{self.meta_data[index][3]}.png']
         img0 = cv2.imread(imgpaths[0])
         gt = cv2.imread(imgpaths[1])
         img1 = cv2.imread(imgpaths[2])
@@ -56,7 +68,7 @@ class VimeoDataset(Dataset):
         img0, gt, img1 = self.getimg(index)
                 
         if 'train' in self.dataset_name:
-            img0, gt, img1 = self.aug(img0, gt, img1, 256, 256)
+            img0, gt, img1 = self.aug(img0, gt, img1, self.h, self.w)
             if random.uniform(0, 1) < 0.5:
                 img0 = img0[:, :, ::-1]
                 img1 = img1[:, :, ::-1]
@@ -72,19 +84,19 @@ class VimeoDataset(Dataset):
                 img1 = img1[:, ::-1]
                 gt = gt[:, ::-1]
 
-            p = random.uniform(0, 1)
-            if p < 0.25:
-                img0 = cv2.rotate(img0, cv2.ROTATE_90_CLOCKWISE)
-                gt = cv2.rotate(gt, cv2.ROTATE_90_CLOCKWISE)
-                img1 = cv2.rotate(img1, cv2.ROTATE_90_CLOCKWISE)
-            elif p < 0.5:
-                img0 = cv2.rotate(img0, cv2.ROTATE_180)
-                gt = cv2.rotate(gt, cv2.ROTATE_180)
-                img1 = cv2.rotate(img1, cv2.ROTATE_180)
-            elif p < 0.75:
-                img0 = cv2.rotate(img0, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                gt = cv2.rotate(gt, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                img1 = cv2.rotate(img1, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            # p = random.uniform(0, 1)
+            # if p < 0.25:
+            #     img0 = cv2.rotate(img0, cv2.ROTATE_90_CLOCKWISE)
+            #     gt = cv2.rotate(gt, cv2.ROTATE_90_CLOCKWISE)
+            #     img1 = cv2.rotate(img1, cv2.ROTATE_90_CLOCKWISE)
+            # elif p < 0.5:
+            #     img0 = cv2.rotate(img0, cv2.ROTATE_180)
+            #     gt = cv2.rotate(gt, cv2.ROTATE_180)
+            #     img1 = cv2.rotate(img1, cv2.ROTATE_180)
+            # elif p < 0.75:
+            #     img0 = cv2.rotate(img0, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            #     gt = cv2.rotate(gt, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            #     img1 = cv2.rotate(img1, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
         img0 = torch.from_numpy(img0.copy()).permute(2, 0, 1)
         img1 = torch.from_numpy(img1.copy()).permute(2, 0, 1)

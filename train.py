@@ -75,7 +75,14 @@ def evaluate(model, val_data, nr_eval, local_rank):
         with torch.no_grad():
             pred, _ = model.update(imgs, gt, training=False)
         for j in range(gt.shape[0]):
-            psnr.append(-10 * math.log10(((gt[j] - pred[j]) * (gt[j] - pred[j])).mean().cpu().item()))
+            try:
+                psnr.append(-10 * math.log10(((gt[j] - pred[j]) * (gt[j] - pred[j])).mean().cpu().item()))
+            except:
+                print(f"log error: {gt[j].shape}, {pred[j].shape}")
+                # log to file
+                with open('log/error_log.txt', 'a') as f:
+                    f.write(f"Error at nr_eval {nr_eval}: {gt[j].shape}, {pred[j].shape}\n")
+                psnr.append(0)
    
     psnr = np.array(psnr).mean()
     if local_rank == 0:
@@ -84,11 +91,21 @@ def evaluate(model, val_data, nr_eval, local_rank):
         
 if __name__ == "__main__":    
     parser = argparse.ArgumentParser()
-    parser.add_argument('--local_rank', default=0, type=int, help='local rank')
+    parser.add_argument('--local_rank', '--local-rank', dest='local_rank', default=0, type=int, help='local rank')
     parser.add_argument('--world_size', default=4, type=int, help='world size')
     parser.add_argument('--batch_size', default=8, type=int, help='batch size')
     parser.add_argument('--data_path', type=str, help='data path of vimeo90k')
-    args = parser.parse_args()
+    
+    args, unknown = parser.parse_known_args()
+    
+    # Check for environment variable (recommended by PyTorch)
+    if 'LOCAL_RANK' in os.environ:
+        args.local_rank = int(os.environ['LOCAL_RANK'])
+    
+    # Make sure ckpt directory exists
+    if args.local_rank == 0 and not os.path.exists('ckpt'):
+        os.mkdir('ckpt')
+    
     torch.distributed.init_process_group(backend="nccl", world_size=args.world_size)
     torch.cuda.set_device(args.local_rank)
     if args.local_rank == 0 and not os.path.exists('log'):
@@ -100,5 +117,6 @@ if __name__ == "__main__":
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = True
     model = Model(args.local_rank)
+    # model.load_model()
     train(model, args.local_rank, args.batch_size, args.data_path)
         
