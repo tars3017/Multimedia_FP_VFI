@@ -11,6 +11,60 @@ from tqdm import tqdm
 warnings.filterwarnings('ignore')
 torch.set_grad_enabled(False)
 
+'''==========function for superresolution=========='''
+def process_with_sr_model(image_path, sr_model, device='cuda'):
+    # Load and transform
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+    
+    # Error handling for file loading
+    try:
+        image = Image.open(image_path)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Image not found at path: {image_path}")
+    except Exception as e:
+        raise Exception(f"Error loading image: {e}")
+    
+    # Ensure image is RGB
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    image_tensor = transform(image).unsqueeze(0).to(device)
+    
+    # Ensure model is on the same device
+    sr_model = sr_model.to(device)
+    sr_model.eval()
+    
+    with torch.no_grad():
+        output_tensor = sr_model(image_tensor)
+    
+    # Convert back to image
+    def tensor_to_image(tensor):
+        if tensor.dim() == 4:
+            tensor = tensor.squeeze(0)
+        
+        # Move tensor to CPU first to avoid device issues
+        tensor = tensor.cpu()
+        
+        # Create mean and std tensors on CPU
+        mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+        
+        # Denormalize
+        tensor = tensor * std + mean
+        tensor = tensor.clamp(0, 1)
+        
+        # Convert to numpy and PIL
+        np_img = (tensor.mul(255).byte().permute(1, 2, 0).numpy())
+        return Image.fromarray(np_img)
+    
+    result_image = tensor_to_image(output_tensor)
+    
+    return result_image
+
+
 '''==========import from our code=========='''
 sys.path.append('.')
 from torchvision import transforms
@@ -24,6 +78,7 @@ parser.add_argument('--model', default='ours', type=str)
 parser.add_argument('--path', type=str, required=True)
 args = parser.parse_args()
 assert args.model in ['ours', 'ours_small', 'ours_official'], 'Model not exists!'
+
 
 
 '''==========Model setting=========='''
@@ -107,22 +162,25 @@ for i in f:
     cv2.imwrite(f'test_result/test_{name_underline}.jpg', mid)
     mid = cv2.cvtColor(mid, cv2.COLOR_BGR2RGB)
 
-    mid = Image.open(f'test_result/test_{name_underline}.jpg')
-    mean = [0.485, 0.456, 0.406]
-    std = [0.229, 0.224, 0.225]
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std),
-    ])
-    mid = transform(mid).unsqueeze(0).cuda()
-    mid = sr_model(mid).squeeze(0)
-    pil_mid = mid.detach().cpu()
-    for i in range(3):
-        pil_mid[i] = pil_mid[i] * std[i] + mean[i]
-    pil_mid = torch.clamp(pil_mid, 0, 1)
-    to_pil = transforms.ToPILImage()
-    pil_mid = to_pil(pil_mid)
-    pil_mid.save(f'tmp2.jpg')
+    # spatio superresolution start!!
+    result_img = process_with_sr_model(f'test_result/test_{name_underline}.jpg', sr_model=sr_model, device='cuda')
+    # mid = Image.open(f'test_result/test_{name_underline}.jpg')
+    # mean = [0.485, 0.456, 0.406]
+    # std = [0.229, 0.224, 0.225]
+    # transform = transforms.Compose([
+    #     transforms.ToTensor(),
+    #     transforms.Normalize(mean=mean, std=std),
+    # ])
+    # mid = transform(mid).unsqueeze(0).cuda()
+    # mid = sr_model(mid).squeeze(0)
+    # pil_mid = mid.detach().cpu()
+    # for i in range(3):
+    #     pil_mid[i] = pil_mid[i] * std[i] + mean[i]
+    # pil_mid = torch.clamp(pil_mid, 0, 1)
+    # to_pil = transforms.ToPILImage()
+    # pil_mid = to_pil(pil_mid)
+
+    result_img.save(f'tmp2.jpg')
 
 
     # mid = cv2.imread(f'test_result/test_{name_underline}.jpg')
